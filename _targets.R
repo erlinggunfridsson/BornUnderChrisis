@@ -3,21 +3,32 @@ library(tarchetypes)
 
 tar_option_set(
   packages = c(
-    "dplyr",
-    "tibble",
+    "data.table",
     "ggplot2",
     "broom",
-    "readr"
+    "tibble"
   )
 )
 
 source("R/functions_targets.R")
 
-cases <- tibble::tibble(
+
+
+cases <- data.table::data.table(
   case = c("war", "famine")
 )
 
 list(
+  tar_target(
+    parishes_ske,
+    c(
+      "SKELLEFTEÅ", "BURTRÄSK", "BYGDEÅ", "BYSKE",
+      "LÖVÅNGER", "NYSÄTRA", "NORSJÖ", "JÖRN",
+      "ROBERTSFORS", "YTTERSTFORS", "SKELLEFTEÅ SANKT OLOF",
+      "FÄLLFORS"
+    )
+  ),
+  
   tar_target(
     boende_file,
     "data/raw/boende.rds",
@@ -25,13 +36,23 @@ list(
   ),
   
   tar_target(
-    base_spells,
+    base_spells_full,
     build_base_spells(boende_file)
+  ),
+  
+  tar_target(
+    base_spells,
+    filter_to_region(base_spells_full, parishes_ske)
   ),
   
   tar_target(
     indiv_data,
     collapse_to_individual(base_spells)
+  ),
+  
+  tar_target(
+    check_parishes,
+    unique(base_spells[, .(bofrsnmn)])[order(bofrsnmn)]
   ),
   
   tar_target(

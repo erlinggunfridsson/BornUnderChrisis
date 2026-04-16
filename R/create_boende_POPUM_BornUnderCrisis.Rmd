@@ -1,0 +1,387 @@
+---
+title: "Untitled"
+author: "Erling"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+
+# Paper 2 Born under crisis
+
+long term demographic effects of beeing born effects
+
+- Livslängd efter födsel runt kriget
+- andelen oäkta
+- Dödfödda
+- får man lyte?
+- Bonde?
+- Egen fertilitet
+
+Data
+
+
+```{r}
+## ===== Create ../data/boende.Rdata (full pipeline, no row drops) =====
+
+## Packages
+library(data.table)
+library(readr)
+library(anytime) 
+library(sp)
+```
+
+```{r}
+
+
+## ---------- READ BASE (U21008) ----------
+# individ_orginal <- fread("~/Arkiv/Data/U21008-Leverans/u21008_fil01_individ.txt")
+individ <- fread("~/gitstuff/POPUM_DDB/POPUM_person.csv")
+names(individ)
+# names(individ_orginal)
+```
+
+```{r}
+
+individ$FODHEMFRSNMN <- trimws(individ$FODHEMFRSNMN)
+# boende <- fread("~/gitstuff/POPUM_DDB/POPUM_BOENDE.csv")
+# BOFRS <- fread("~/gitstuff/POPUM_DDB/POPUM_BOFRS.csv")
+# BOORT <- fread("~/gitstuff/POPUM_DDB/POPUM_BOORT.csv")
+boende <- fread("~/gitstuff/POPUM_DDB/POPUM_BOFRSORT.csv")
+
+## För att skapa något som boende_orginal merga BOORT och BOFRS
+## finns det överlapp i tidsperioder för individer i BOFRS
+
+# boende_orginal  <- fread("~/Arkiv/Data/U21008-Leverans/u21008_fil02_boende.txt")
+# boende_orginal[, V12 := NULL]
+```
+```{r}
+## Här ersätts boendeorginal med 
+```
+
+
+```{r}
+# # library(data.table)
+# 
+# ## ---- helper: normalize YYYYMMDD to numeric YYYYMMDD (integer) without Date types
+# normalize_yyyymmdd_num <- function(v, end_of_range = FALSE) {
+#   # Accept integer/character, return integer like 18950315L
+#   x <- suppressWarnings(as.integer(v))
+#   x[is.na(x) | x == 0L] <- NA_integer_
+# 
+#   y <- x %/% 10000L                   # year
+#   md <- x %% 10000L
+#   m <- md %/% 100L                    # month
+#   d <- md %% 100L                     # day
+# 
+#   # missing month+day (....0000)
+#   both_missing <- !is.na(x) & (md == 0L)
+#   if (any(both_missing)) {
+#     m[both_missing] <- ifelse(end_of_range, 12L, 1L)
+#     d[both_missing] <- ifelse(end_of_range, 31L, 1L)
+#   }
+# 
+#   # missing day only (....MM00)
+#   day_missing <- !is.na(x) & (d == 0L) & (m != 0L)
+#   if (any(day_missing)) {
+#     if (end_of_range) {
+#       yy <- y[day_missing]; mm <- m[day_missing]
+#       # last day of month (numeric, handles leap years)
+#       last_day <- function(yy, mm) {
+#         if (mm %in% c(1L,3L,5L,7L,8L,10L,12L)) return(31L)
+#         if (mm %in% c(4L,6L,9L,11L))           return(30L)
+#         # February:
+#         leap <- (yy %% 400L == 0L) | ((yy %% 4L == 0L) & (yy %% 100L != 0L))
+#         ifelse(leap, 29L, 28L)
+#       }
+#       d[day_missing] <- last_day(yy, mm)
+#     } else {
+#       d[day_missing] <- 1L
+#     }
+#   }
+# 
+#   # Recompose; if year is NA, keep NA
+#   out <- ifelse(is.na(y), NA_integer_, y * 10000L + m * 100L + d)
+#   as.integer(out)
+# }
+# 
+# ## ---- copies
+# FRS <- copy(BOFRS)   # has DDBID, BOBDAT (period start)
+# ORT <- copy(BOORT)   # has DDBID, BOBDAT (events to place)
+# 
+# ## ---- ensure same ID type
+# for (DT in list(FRS, ORT)) {
+#   if ("DDBID" %in% names(DT)) DT[, DDBID := as.character(DDBID)]
+# }
+# 
+# ## ---- build numeric bounds in FRS
+# FRS[, start_num := normalize_yyyymmdd_num(BOBDAT, end_of_range = FALSE)]
+# setorder(FRS, DDBID, start_num, na.last = TRUE)
+# FRS[, next_start_num := shift(start_num, type = "lead"), by = DDBID]
+# FRS[is.na(next_start_num), next_start_num := 99991231L]  # open-ended upper limit
+# 
+# ## (optional) if you prefer using explicit BOSDAT as upper bound, uncomment:
+# # FRS[, end_num := normalize_yyyymmdd_num(BOSDAT, end_of_range = TRUE)]
+# # FRS[, upper_num := fifelse(!is.na(end_num), pmin(end_num, next_start_num - 1L), next_start_num - 1L)]
+# # FRS[, end_num := NULL]  # keep upper_num as final upper bound
+# # setnames(FRS, "upper_num", "next_start_num")
+# 
+# ## ---- event date in ORT
+# ORT[, event_num := normalize_yyyymmdd_num(BOBDAT, end_of_range = FALSE)]
+# 
+# ## ---- non-equi join: start_num <= event_num < next_start_num
+# setkey(FRS, DDBID, start_num, next_start_num)
+# merged <- FRS[
+#   ORT,
+#   on = .(DDBID, start_num <= event_num, next_start_num > event_num),
+#   nomatch = 0L
+# ]
+# 
+# ## tidy col names from i=ORT side (optional)
+# setnames(merged,
+#          old = c("i.BOBDAT", "event_num"),
+#          new = c("BOBDAT_ORT_raw", "BOBDAT_ORT_num"),
+#          skip_absent = TRUE)
+# 
+# # 'merged' now has each BOORT record matched to the BOFRS spell
+# # where its numeric BOBDAT falls: start_num <= BOBDAT_ORT_num < next_start_num
+
+```
+```{r}
+## kontroll  var hör 199896223 hemma?
+# table(merged[merged$BOORTNMN == "VILLVATTNET"]$BOORTNMN, merged[merged$BOORTNMN == "VILLVATTNET"]$BOFRSNMN )
+# table(merged[merged$BOORTNMN == "LJUSVATTNET"]$BOORTNMN, merged[merged$BOORTNMN == "LJUSVATTNET"]$BOFRSNMN )
+# merged[merged$BOORTNMN == "LJUSVATTNET" & merged$BOFRSNMN == "SKELLEFTEÅ"]
+# 
+# table(merged$BOREGPREFIX)
+```
+
+```{r}
+# ## ---------- READ COMPLEMENT (U24002) for individ + boende ----------
+# individ24 <- fread("~/Arkiv/Data/DDB/U24002/u24002_file01_person.txt")
+# individ24[, UTTAGSID_new := paste0(REGPREFIX, UTTAGSID)]
+# uttagsidkey <- individ24[, .(UTTAGSID, UTTAGSID_new)]
+# individ24[, UTTAGSID := UTTAGSID_new][, UTTAGSID_new := NULL]
+# individ24$FODHEMFRSNMN <- trimws(individ24$FODHEMFRSNMN)
+# 
+# boende24 <- fread("~/Arkiv/Data/DDB/U24002/u24002_file02_bofrsort.txt")
+# boende24 <- merge(boende24, uttagsidkey, by = "UTTAGSID", all.x = TRUE)
+# boende24[, UTTAGSID := UTTAGSID_new][, UTTAGSID_new := NULL]
+# boende24[, V12 := NULL]
+# 
+# ## ---------- OPTIONAL CLEAN to avoid merge overlap exactly as your notes ----------
+# individ <- individ[REGPREFIX != "NIL"]
+# 
+# ## ---------- COMBINE ----------
+# individ <- rbindlist(list(individ, individ24), fill = TRUE)
+# boende  <- rbindlist(list(boende,  boende24 ), fill = TRUE)
+# 
+# ## ---------- STANDARDIZE ID TYPE (avoid join type mismatches) ----------
+# if ("UTTAGSID" %in% names(individ)) individ[, UTTAGSID := as.character(UTTAGSID)]
+# if ("UTTAGSID" %in% names(boende))  boende[,  UTTAGSID := as.character(UTTAGSID)]
+
+```
+```{r}
+## ---------- WGS84 COORDINATES ----------
+
+
+KODORTKOD <- fread("/home/erling/gitstuff/POPUM_DDB/POPUM_KODORTKOD.csv")
+
+SWEREF99toWGS84 <- function(coords) {
+  coords$id <- seq_len(nrow(coords))
+  coords_org <- coords
+  coords <- na.omit(coords)
+  tmp <- data.frame(coords.x = coords$X_ORT, coords.y = coords$Y_ORT)
+  coordinates(tmp) <- ~ coords.x + coords.y
+  proj4string(tmp) <- CRS("+init=epsg:3021")
+  coords.WGS84 <- spTransform(tmp, CRS("+init=epsg:4326"))
+  coords.WGS84 <- data.frame(lat = coords.WGS84@coords[,1],
+                             lon = coords.WGS84@coords[,2],
+                             id  = coords$id)
+  merge(coords_org, coords.WGS84, by = "id", all.x = TRUE)
+}
+
+coords_in  <- as.data.frame(KODORTKOD[, .(X_ORT, Y_ORT)])
+coords_out <- SWEREF99toWGS84(coords_in)[, c("lat","lon")]
+KODORTKOD  <- cbind(KODORTKOD, coords_out)
+KODORTKOD[, c("X_ORT","Y_ORT") := NULL]
+
+## Merge coords onto boende using ORTKOD == BOORTKOD
+boende[, ORTKOD := BOORTKOD]
+boende <- KODORTKOD[, .(ORTKOD, ORTNMN, lat, lon)][boende, on = "ORTKOD"]
+boende[, c("ORTKOD","ORTNMN") := NULL]
+```
+```{r}
+## ---------- ADD PERSON VARS (sex + birth/death) ----------
+# boende <- individ[, .(UTTAGSID, KON, FODDAT, DODDAT)][boende, on = "UTTAGSID"]
+boende <- individ[, .(DDBID, KON, FODDAT, DODDAT)][boende, on = "DDBID"]
+
+## Normalize FODDAT/DODDAT (fill missing month/day); keep rows; silence warnings
+boende[, FODDAT := as.character(FODDAT)]
+boende[, DODDAT := as.character(DODDAT)]
+
+boende[, FODDAT := ifelse(substr(FODDAT, 5, 8) == "0000",
+                          paste0(substr(FODDAT, 1, 4), "0101"), FODDAT)]
+boende[, DODDAT := ifelse(substr(DODDAT, 5, 8) == "0000",
+                          paste0(substr(DODDAT, 1, 4), "1231"), DODDAT)]
+boende[, FODDAT := ifelse(substr(FODDAT, 7, 8) == "00",
+                          paste0(substr(FODDAT, 1, 6), "01"), FODDAT)]
+boende[, DODDAT := ifelse(substr(DODDAT, 7, 8) == "00",
+                          paste0(substr(DODDAT, 1, 6), "30"), DODDAT)]
+
+boende[, FODDAT := fifelse(FODDAT == "0", NA_character_, FODDAT)]
+boende[, DODDAT := fifelse(DODDAT == "0", NA_character_, DODDAT)]
+
+boende[, FOD_DATE := suppressWarnings(anydate(FODDAT))]
+boende[, DOD_DATE := suppressWarnings(anydate(DODDAT))]
+
+```
+```{r}
+
+## ---------- NORMALIZE RESIDENCE INTERVAL DATES ----------
+boende[, BOBDAT := as.character(BOBDAT)]
+boende[, BOSDAT := as.character(BOSDAT)]
+
+boende[, BOBDAT := ifelse(substr(BOBDAT, 5, 8) == "0000",
+                          paste0(substr(BOBDAT, 1, 4), "0101"), BOBDAT)]
+boende[, BOSDAT := ifelse(substr(BOSDAT, 5, 8) == "0000",
+                          paste0(substr(BOSDAT, 1, 4), "1231"), BOSDAT)]
+boende[, BOBDAT := ifelse(substr(BOBDAT, 7, 8) == "00",
+                          paste0(substr(BOBDAT, 1, 6), "01"), BOBDAT)]
+boende[, BOSDAT := ifelse(substr(BOSDAT, 7, 8) == "00",
+                          paste0(substr(BOSDAT, 1, 6), "30"), BOSDAT)]
+
+boende[, BOB_DATE := suppressWarnings(anydate(BOBDAT))]
+boende[, BOS_DATE := suppressWarnings(anydate(BOSDAT))]
+# setkey(boende, UTTAGSID, BONR)
+setkey(boende, DDBID, BONR)
+
+## ---------- FIX OVERLAPS (no row drops) ----------
+# boende[, nyobs      := UTTAGSID == shift(UTTAGSID, 1L, type = "lag")]
+boende[, nyobs      := DDBID == shift(DDBID, 1L, type = "lag")]
+boende[, problemdat := BOB_DATE <  shift(BOS_DATE, 1L, type = "lag")]
+boende[, nystart    := shift(BOS_DATE, 1L, type = "lag")]
+
+boende[, BOB_DATE := as.Date(
+  ifelse(nyobs & problemdat, nystart, BOB_DATE),
+  origin = "1970-01-01"
+)]
+## Ensure first row is valid
+boende[1, BOB_DATE := suppressWarnings(anydate(BOBDAT[1]))]
+
+boende[, c("nyobs","problemdat","nystart") := NULL]
+```
+
+```{r}
+
+
+## ---------- ADD FIRST HISCOSTATUS==13 NOTE (poverty) ----------
+# yrke <- fread("~/Arkiv/Data/U21008-Leverans/u21008_fil06_yrke.txt")
+yrke <- fread("/home/erling/gitstuff/POPUM_DDB/POPUM_YRKE.csv")
+
+## standardize id type here too
+# if ("UTTAGSID" %in% names(yrke)) yrke[, UTTAGSID := as.character(UTTAGSID)]
+if ("UTTAGSID" %in% names(yrke)) yrke[, DDBID := as.character(UTTAGSID)]
+
+yrke[, YRKEBDAT := as.character(YRKEBDAT)]
+yrke[, YRKESDAT := as.character(YRKESDAT)]
+yrke[, YRKEBDAT := ifelse(substr(YRKEBDAT, 5, 8) == "0000",
+                          paste0(substr(YRKEBDAT, 1, 4), "0101"), YRKEBDAT)]
+yrke[, YRKESDAT := ifelse(substr(YRKESDAT, 5, 8) == "0000",
+                          paste0(substr(YRKESDAT, 1, 4), "1231"), YRKESDAT)]
+yrke[, YRKEBDAT := ifelse(substr(YRKEBDAT, 7, 8) == "00",
+                          paste0(substr(YRKEBDAT, 1, 6), "01"), YRKEBDAT)]
+yrke[, YRKESDAT := ifelse(substr(YRKESDAT, 7, 8) == "00",
+                          paste0(substr(YRKESDAT, 1, 6), "30"), YRKESDAT)]
+yrke[, YRKE_BDATE := suppressWarnings(anydate(YRKEBDAT))]
+# setkey(yrke, UTTAGSID, YRKEBDAT)
+setkey(yrke, DDBID, YRKEBDAT)
+
+# fattiga <- yrke[HISCOSTATUS == 13, .SD[1], by = UTTAGSID]
+fattiga <- yrke[HISCOSTATUS == 13, .SD[1], by = DDBID]
+
+## make sure boende ID is character (again, safe if already set)
+# boende[, UTTAGSID := as.character(UTTAGSID)]
+# setkey(boende, UTTAGSID)
+# setkey(fattiga, UTTAGSID)
+boende[, UTTAGSID := as.character(DDBID)]
+setkey(boende, DDBID)
+setkey(fattiga, DDBID)
+
+# boende <- fattiga[, .(UTTAGSID, HISCOSTATUS, YRKE_BDATE)][boende, on = "UTTAGSID"]
+boende <- fattiga[, .(DDBID, HISCOSTATUS, YRKE_BDATE)][boende, on = "DDBID"]
+```
+
+## Lyten
+```{r}
+## ---------- ADD FIRST DISABILITY (lyten) NOTE ----------
+lyten_med_institutioner <- fread("~/Arkiv/Data/U21008-Leverans/u21008_fil10_lyten.txt") # användes tidigare
+lyten <- fread("/home/erling/gitstuff/POPUM_DDB/POPUM_lyte.csv")
+## WORK!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! names(lyten)
+## standardize id type here too
+# if ("UTTAGSID" %in% names(lyten)) lyten[, UTTAGSID := as.character(UTTAGSID)]
+if ("UTTAGSID" %in% names(lyten)) lyten[, DDBID := as.character(UTTAGSID)]
+
+# lyten[, lytenBDAT := as.character(ANMNOBDAT)]
+lyten[, lytenBDAT := as.character(LYTEBDAT)]
+# lyten[, lytenSDAT := as.character(ANMNOSDAT)]
+lyten[, lytenSDAT := as.character(LYTESDAT)]
+lyten[, lytenBDAT := ifelse(substr(lytenBDAT, 5, 8) == "0000",
+                            paste0(substr(lytenBDAT, 1, 4), "0101"), lytenBDAT)]
+lyten[, lytenSDAT := ifelse(substr(lytenSDAT, 5, 8) == "0000",
+                            paste0(substr(lytenSDAT, 1, 4), "1231"), lytenSDAT)]
+lyten[, lytenBDAT := ifelse(substr(lytenBDAT, 7, 8) == "00",
+                            paste0(substr(lytenBDAT, 1, 6), "01"), lytenBDAT)]
+lyten[, lytenSDAT := ifelse(substr(lytenSDAT, 7, 8) == "00",
+                            paste0(substr(lytenSDAT, 1, 6), "30"), lytenSDAT)]
+lyten[, lyten_BDATE := suppressWarnings(anydate(lytenBDAT))]
+# setkey(lyten, UTTAGSID, lytenBDAT)
+setkey(lyten, DDBID, lytenBDAT)
+# lytiga <- lyten[, .SD[1], by = UTTAGSID]
+lytiga <- lyten[, .SD[1], by = DDBID]
+```
+
+```{r}
+## Var bor de lytiga? Väldigt få i Sundsvallsregionen
+lyttBoende <- merge(lytiga, boende[ , c("DDBID", "BOREGPREFIX")])
+table(lyttBoende$BOREGPREFIX)
+
+per_region_lytta <- unique(lyttBoende[!is.na(BOREGPREFIX), .(BOREGPREFIX, DDBID)]
+  )[, .(n_individuals = .N), by = BOREGPREFIX][order(BOREGPREFIX)]
+
+per_region_lytta[, total := sum(n_individuals)]
+per_region_lytta 
+
+per_region_boende <- unique(boende[!is.na(BOREGPREFIX), .(BOREGPREFIX, DDBID)]
+  )[, .(n_individuals = .N), by = BOREGPREFIX][order(BOREGPREFIX)]
+
+per_region_boende[, total := sum(n_individuals)]
+per_region_boende 
+
+bolytt <- merge(per_region_boende, per_region_lytta, by = "BOREGPREFIX")
+bolytt <- bolytt[ , andelLytta := n_individuals.y/n_individuals.x]
+bolytt
+```
+
+```{r}
+## ensure char, key & join
+# boende[, UTTAGSID := as.character(UTTAGSID)]
+boende[, DDBID := as.character(DDBID)]
+# setkey(boende, UTTAGSID)
+# setkey(lytiga,  UTTAGSID)
+
+lytiga[, DDBID := as.character(DDBID)]  # gör index columnen till charachter
+setkey(boende, DDBID)
+setkey(lytiga,  DDBID)
+
+str(boende)
+# boende <- lytiga[, .(UTTAGSID, lyten_BDATE)][boende, on = "UTTAGSID"]
+boende <- lytiga[, .(DDBID, lyten_BDATE, LYTESTDNMN)][boende, on = "DDBID"]
+```
+```{r}
+# När får individerna sina lytesnoteringar i repektive regioner
+# c("DDBID","lyten_BDATE", "LYTESTDNMN", "BOREGPREFIX")
+names(boende)
+
+```
+
+ 

@@ -2,14 +2,10 @@ library(targets)
 library(tarchetypes)
 
 popum_dir <- "/home/erling/gitstuff/POPUM_DDB"
+admin_censor_date <- as.Date("1890-01-01")
 
 tar_option_set(
-  packages = c(
-    "data.table",
-    "ggplot2",
-    "broom",
-    "survival"
-  )
+  packages = c("data.table", "ggplot2", "broom", "survival")
 )
 
 source("R/functions_targets.R")
@@ -34,117 +30,53 @@ forsamlingar_ske <- c(
 )
 
 list(
-  tar_target(
-    raw_individ_file,
-    file.path(popum_dir, "POPUM_person.csv"),
-    format = "file"
-  ),
+  tar_target(raw_individ_file, file.path(popum_dir, "POPUM_person.csv"), format = "file"),
+  tar_target(raw_boende_file, file.path(popum_dir, "POPUM_BOFRSORT.csv"), format = "file"),
+  tar_target(raw_kodort_file, file.path(popum_dir, "POPUM_KODORTKOD.csv"), format = "file"),
+  tar_target(raw_yrke_file, file.path(popum_dir, "POPUM_YRKE.csv"), format = "file"),
+  tar_target(raw_lyte_file, file.path(popum_dir, "POPUM_lyte.csv"), format = "file"),
   
-  tar_target(
-    raw_boende_file,
-    file.path(popum_dir, "POPUM_BOFRSORT.csv"),
-    format = "file"
-  ),
+  tar_target(censor_date, admin_censor_date),
+  tar_target(selected_parishes, forsamlingar_ske),
+  tar_target(case_tbl, cases),
   
-  tar_target(
-    raw_kodort_file,
-    file.path(popum_dir, "POPUM_KODORTKOD.csv"),
-    format = "file"
-  ),
-  
-  tar_target(
-    raw_yrke_file,
-    file.path(popum_dir, "POPUM_YRKE.csv"),
-    format = "file"
-  ),
-  
-  tar_target(
-    raw_lyte_file,
-    file.path(popum_dir, "POPUM_lyte.csv"),
-    format = "file"
-  ),
-  
-  tar_target(
-    individ,
-    read_individ(raw_individ_file)
-  ),
-  
-  tar_target(
-    boende_events,
-    read_boende_events(raw_boende_file)
-  ),
-  
-  tar_target(
-    kodort,
-    read_kodort(raw_kodort_file)
-  ),
-  
-  tar_target(
-    yrke,
-    read_yrke(raw_yrke_file)
-  ),
-  
-  tar_target(
-    lyte,
-    read_lyte(raw_lyte_file)
-  ),
+  tar_target(individ, read_individ(raw_individ_file)),
+  tar_target(boende_events, read_boende_events(raw_boende_file)),
+  tar_target(kodort, read_kodort(raw_kodort_file)),
+  tar_target(yrke, read_yrke(raw_yrke_file)),
+  tar_target(lyte, read_lyte(raw_lyte_file)),
   
   tar_target(
     boende_raw,
-    build_boende(
-      individ = individ,
-      boende_events = boende_events,
-      kodort = kodort,
-      yrke = yrke,
-      lyte = lyte
-    )
-  ),
-  
-  tar_target(
-    boende_raw_rds,
-    save_rds_target(boende_raw, "data/derived/boende_raw.rds"),
-    format = "file"
-  ),
-  
-  tar_target(
-    selected_parishes,
-    forsamlingar_ske
+    build_boende(individ, boende_events, kodort, yrke, lyte)
   ),
   
   tar_target(
     boende_ske,
     filter_to_region_and_parishes(
-      spells = boende_raw,
+      boende_raw,
       region_code = "NOS",
       parish_names = selected_parishes
     )
   ),
   
   tar_target(
-    boende_ske_rds,
-    save_rds_target(boende_ske, "data/derived/boende_ske.rds"),
-    format = "file"
+    boende_ske_censored,
+    censor_spells(boende_ske, censor_date)
   ),
   
   tar_target(
     boende_ske_regularized,
-    regularize_spells(boende_ske, gap_years = 2)
-  ),
-  
-  tar_target(
-    boende_ske_regularized_rds,
-    save_rds_target(boende_ske_regularized, "data/derived/boende_ske_regularized.rds"),
-    format = "file"
+    regularize_spells(boende_ske_censored, gap_years = 2)
   ),
   
   tar_target(
     indiv_data,
-    collapse_to_individual(boende_ske_regularized, gap_years = 2)
-  ),
-  
-  tar_target(
-    case_tbl,
-    cases
+    collapse_to_individual(
+      boende_ske_regularized,
+      gap_years = 2,
+      censor_date = censor_date
+    )
   ),
   
   tar_target(
@@ -168,60 +100,19 @@ list(
   tar_target(
     analysis_data,
     combine_individual_and_spell_exposure(
-      indiv_exposure = indiv_exposure,
-      spell_exposure = spell_exposure,
-      case = case_tbl$case
+      indiv_exposure,
+      spell_exposure,
+      case_tbl$case
     ),
     pattern = map(indiv_exposure, spell_exposure, case_tbl)
   ),
   
   tar_target(
-    descriptive_table,
-    make_descriptive_table(analysis_data, case_tbl$case),
-    pattern = map(analysis_data, case_tbl)
-  ),
-  
-  tar_target(
-    cohort_plot,
-    make_cohort_plot(analysis_data, case_tbl$case),
-    pattern = map(analysis_data, case_tbl)
-  ),
-  
-  tar_target(
-    spatial_exposure_plot,
-    make_spatial_exposure_plot(analysis_data, case_tbl$case),
-    pattern = map(analysis_data, case_tbl)
-  ),
-  
-  tar_target(
-    main_model_birth,
-    fit_main_model_birth(analysis_data, case_tbl$case),
-    pattern = map(analysis_data, case_tbl)
-  ),
-  
-  tar_target(
-    main_model_spatial,
-    fit_main_model_spatial(analysis_data, case_tbl$case),
-    pattern = map(analysis_data, case_tbl)
-  ),
-  
-  tar_target(
-    model_table_birth,
-    tidy_model(main_model_birth, case_tbl$case, "birth_exposure"),
-    pattern = map(main_model_birth, case_tbl)
-  ),
-  
-  tar_target(
-    model_table_spatial,
-    tidy_model(main_model_spatial, case_tbl$case, "spatial_exposure"),
-    pattern = map(main_model_spatial, case_tbl)
-  ),
-  
-  tar_target(
     km_data,
     make_km_data(
-      dat = analysis_data,
-      case = case_tbl$case,
+      analysis_data,
+      case_tbl$case,
+      censor_date,
       years_before = 3,
       years_after = 3
     ),
@@ -243,11 +134,122 @@ list(
   tar_target(
     km_plot_file,
     save_km_plot(
-      km_tidy = km_tidy,
-      case = case_tbl$case,
-      path = file.path("output", case_tbl$case, "figures", "km_plot.png")
+      km_tidy,
+      case_tbl$case,
+      file.path("output", case_tbl$case, "figures", "km_sex.png")
     ),
     pattern = map(km_tidy, case_tbl),
     format = "file"
+  ),
+  
+  tar_target(
+    km_data_legitimacy,
+    make_km_data_legitimacy(
+      analysis_data,
+      case_tbl$case,
+      censor_date,
+      years_before = 3,
+      years_after = 3
+    ),
+    pattern = map(analysis_data, case_tbl)
+  ),
+  
+  tar_target(
+    km_fit_legitimacy,
+    fit_km_curve_legitimacy(km_data_legitimacy),
+    pattern = map(km_data_legitimacy)
+  ),
+  
+  tar_target(
+    km_tidy_legitimacy,
+    tidy_km_fit_legitimacy(km_fit_legitimacy, case_tbl$case),
+    pattern = map(km_fit_legitimacy, case_tbl)
+  ),
+  
+  tar_target(
+    km_plot_file_legitimacy,
+    save_km_plot_legitimacy(
+      km_tidy_legitimacy,
+      case_tbl$case,
+      file.path("output", case_tbl$case, "figures", "km_legitimacy.png")
+    ),
+    pattern = map(km_tidy_legitimacy, case_tbl),
+    format = "file"
+  ),
+  
+  tar_target(
+    illegitimacy_ts,
+    make_illegitimacy_time_series(analysis_data, case_tbl$case),
+    pattern = map(analysis_data, case_tbl)
+  ),
+  
+  tar_target(
+    illegitimacy_plot_file,
+    save_illegitimacy_plot(
+      illegitimacy_ts,
+      case_tbl$case,
+      file.path("output", case_tbl$case, "figures", "illegitimacy_share.png")
+    ),
+    pattern = map(illegitimacy_ts, case_tbl),
+    format = "file"
+  ),
+  
+  tar_target(
+    lyte_model_data,
+    make_lyte_model_data(
+      indiv_data,
+      lyte,
+      case_tbl$case,
+      censor_date,
+      years_before = 3,
+      years_after = 3
+    ),
+    pattern = map(case_tbl)
+  ),
+  
+  tar_target(
+    lyte_model,
+    fit_lyte_model(lyte_model_data),
+    pattern = map(lyte_model_data)
+  ),
+  
+  tar_target(
+    lyte_model_table,
+    data.table::copy(tidy_lyte_model(lyte_model))[, case := case_tbl$case],
+    pattern = map(lyte_model, case_tbl)
+  ),
+  
+  tar_target(
+    lyte_global_tests,
+    data.table::copy(tidy_global_tests(lyte_model))[, case := case_tbl$case],
+    pattern = map(lyte_model, case_tbl)
+  ),
+  
+  tar_target(
+    lyte_prediction_data,
+    make_lyte_prediction_data(lyte_model_data),
+    pattern = map(lyte_model_data)
+  ),
+  
+  tar_target(
+    lyte_prediction_results,
+    predict_lyte_model(lyte_model, lyte_prediction_data),
+    pattern = map(lyte_model, lyte_prediction_data)
+  ),
+  
+  tar_target(
+    lyte_prediction_plot_file,
+    save_lyte_prediction_plot(
+      lyte_prediction_results,
+      case_tbl$case,
+      file.path("output", case_tbl$case, "figures", "lyte_prediction_plot.png")
+    ),
+    pattern = map(lyte_prediction_results, case_tbl),
+    format = "file"
+  ),
+  
+  tarchetypes::tar_render(
+    paper_war,
+    path = "reports/paper_war.qmd"
   )
 )

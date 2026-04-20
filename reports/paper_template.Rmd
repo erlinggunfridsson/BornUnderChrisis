@@ -1,0 +1,18 @@
+---
+title: "Born under crisis"
+output: html_document
+params:
+  case: "war"
+---
+
+```{r}
+case <- params$case
+```
+
+# Introduktion
+
+Detta är en parameteriserad rapport.
+
+# Resultat
+
+Här kommer analysen för `r case`.

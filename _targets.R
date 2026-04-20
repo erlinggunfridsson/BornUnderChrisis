@@ -74,8 +74,7 @@ list(
     indiv_data,
     collapse_to_individual(
       boende_ske_regularized,
-      gap_years = 2,
-      censor_date = censor_date
+      gap_years = 2
     )
   ),
   

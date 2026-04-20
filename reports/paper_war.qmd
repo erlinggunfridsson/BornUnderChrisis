@@ -1,0 +1,273 @@
+---
+title: "Born under crisis: Early-life conditions and health outcomes during the Finnish War"
+author:
+  - name: "Erling Häggström Gunfridsson"
+    affiliation: "Umeå University"
+  - name: "Elina Nordun Omnell"
+    affiliation: "Umeå University"
+date: today
+format:
+  html:
+    toc: true
+    number-sections: true
+  pdf:
+    toc: true
+    number-sections: true
+    documentclass: article
+    geometry: margin=2.5cm
+    fontsize: 11pt
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+## Abstract {-}
+
+This paper examines the long-term consequences of early-life exposure to crisis conditions during the Finnish War (1808–1809). Using longitudinal individual-level data from northern Sweden, we analyse both survival and early-life health outcomes. The results indicate that cohorts born during the crisis exhibit distinct patterns in mortality and disability, consistent with both selection effects and causal impacts of adverse early-life environments.
+
+**Keywords:** early-life conditions, mortality, health, Finnish War, historical demography
+
+```{r}
+library(targets)
+library(data.table)
+library(ggplot2)
+library(knitr)
+
+pick_case_table <- function(x, case_name = "war") {
+  dt <- data.table::as.data.table(x)
+  if (!"case" %in% names(dt)) return(dt)
+  out <- dt[case == case_name]
+  if (nrow(out) == 0L) {
+    stop(sprintf("No rows found for case '%s'.", case_name), call. = FALSE)
+  }
+  out
+}
+
+pick_case_file <- function(x, case_name = "war") {
+  if (is.character(x)) {
+    hit <- grepl(paste0("/", case_name, "/"), x, fixed = TRUE)
+    if (any(hit)) return(unname(x[hit][1]))
+    nms <- names(x)
+    if (!is.null(nms)) {
+      hit_nms <- grepl(case_name, nms, fixed = TRUE)
+      if (any(hit_nms)) return(unname(x[hit_nms][1]))
+    }
+    if (length(x) == 1L) return(unname(x[1]))
+  }
+
+  dt <- data.table::as.data.table(x)
+  if ("case" %in% names(dt)) {
+    out <- dt[case == case_name]
+    if (nrow(out) == 0L) {
+      stop(sprintf("No file found for case '%s'.", case_name), call. = FALSE)
+    }
+  } else {
+    out <- dt
+  }
+
+  for (nm in c("path", "file", "value")) {
+    if (nm %in% names(out)) return(out[[nm]][[1]])
+  }
+
+  stop("Could not identify the correct file for the selected case.", call. = FALSE)
+}
+
+format_p_value <- function(p) {
+  ifelse(
+    is.na(p),
+    NA_character_,
+    ifelse(p < 0.001, "<0.001", sprintf("%.3f", p))
+  )
+}
+
+format_lyte_table <- function(dt, digits = 3) {
+  dt <- data.table::copy(data.table::as.data.table(dt))
+
+  keep <- intersect(
+    c(
+      "case", "term", "estimate", "std.error", "statistic", "p.value",
+      "odds_ratio", "conf.low.or", "conf.high.or"
+    ),
+    names(dt)
+  )
+  dt <- dt[, ..keep]
+
+  if ("term" %in% names(dt)) {
+    dt <- dt[term != "(Intercept)"]
+  }
+
+  num_cols <- intersect(
+    c("estimate", "std.error", "statistic", "odds_ratio", "conf.low.or", "conf.high.or"),
+    names(dt)
+  )
+  if (length(num_cols) > 0) {
+    dt[, (num_cols) := lapply(.SD, round, digits), .SDcols = num_cols]
+  }
+
+  if ("p.value" %in% names(dt)) {
+    dt[, p.value := format_p_value(p.value)]
+  }
+
+  dt
+}
+
+format_global_tests <- function(dt, digits = 2) {
+  dt <- data.table::copy(data.table::as.data.table(dt))
+
+  keep <- intersect(c("case", "term", "df", "statistic", "p.value"), names(dt))
+  dt <- dt[, ..keep]
+
+  num_cols <- intersect(c("df", "statistic"), names(dt))
+  if (length(num_cols) > 0) {
+    dt[, (num_cols) := lapply(.SD, round, digits), .SDcols = num_cols]
+  }
+
+  if ("p.value" %in% names(dt)) {
+    dt[, p.value := format_p_value(p.value)]
+  }
+
+  dt
+}
+
+clean_term_labels <- function(x) {
+  x <- gsub("^factor\\(fod_ar\\)", "Birth year: ", x)
+  x <- gsub("^fod_ar", "Birth year", x)
+  x <- gsub("^oaktaTRUE$", "Illegitimate birth", x)
+  x <- gsub("^oakta$", "Illegitimate birth", x)
+  x <- gsub("^kon$", "Sex", x)
+  x <- gsub("^kon1$", "Sex: category 1", x)
+  x <- gsub("^kon2$", "Sex: category 2", x)
+  x
+}
+
+case_name <- "war"
+store_path <- "../_targets"
+
+desc_all <- tar_read(descriptive_table, store = store_path)
+desc_war <- pick_case_table(desc_all, case_name)
+
+lyte_tbl_all <- tar_read(lyte_model_table, store = store_path)
+lyte_tbl_war <- pick_case_table(lyte_tbl_all, case_name)
+
+lyte_global_all <- tar_read(lyte_global_tests, store = store_path)
+lyte_global_war <- pick_case_table(lyte_global_all, case_name)
+
+km_file <- pick_case_file(tar_read(km_plot_file, store = store_path), case_name)
+km_file <- file.path("..", km_file)
+
+illeg_file <- pick_case_file(tar_read(illegitimacy_plot_file, store = store_path), case_name)
+illeg_file <- file.path("..", illeg_file)
+
+lyte_file <- pick_case_file(tar_read(lyte_prediction_plot_file, store = store_path), case_name)
+lyte_file <- file.path("..", lyte_file)
+
+stopifnot(file.exists(km_file))
+stopifnot(file.exists(illeg_file))
+stopifnot(file.exists(lyte_file))
+
+lyte_tbl_war_fmt <- format_lyte_table(lyte_tbl_war, digits = 3)
+if ("term" %in% names(lyte_tbl_war_fmt)) {
+  lyte_tbl_war_fmt[, term := clean_term_labels(term)]
+}
+
+lyte_global_war_fmt <- format_global_tests(lyte_global_war, digits = 2)
+if ("term" %in% names(lyte_global_war_fmt)) {
+  lyte_global_war_fmt[, term := clean_term_labels(term)]
+}
+```
+
+# 1. Introduction
+
+Early-life conditions are widely recognised as key determinants of long-term health and survival. Periods of crisis, such as war or famine, provide exogenous variation in living conditions and therefore offer an opportunity to study these effects.
+
+This paper examines cohorts born around the Finnish War (1808–1809) in northern Sweden. We analyse both survival and early-life health outcomes, measured through disability before age 20.
+
+# 2. Historical context
+
+The Finnish War disrupted economic and social life across northern Sweden. Military mobilisation, institutional breakdown, and potential food shortages may have affected early-life conditions.
+
+Peripheral regions such as Västerbotten are particularly suitable for studying these effects due to their relative isolation and dependence on local production.
+
+# 3. Data
+
+The data are derived from the POPUM database and consist of linked individual-level records including birth, death, residence, and health indicators.
+
+Individuals are constructed from multiple residence spells, with adjustments for overlaps and gaps. Exit types are used to distinguish mortality from migration and censoring.
+
+## 3.1 Descriptive statistics
+
+```{r}
+kable(desc_war)
+```
+
+# 4. Methods
+
+We use two complementary approaches:
+
+- Kaplan–Meier survival analysis
+- Logistic regression of disability before age 20
+
+Cohorts are defined within a narrow time window around the Finnish War.
+
+# 5. Results
+
+## 5.1 Survival
+
+```{r, out.width="75%", fig.align="center"}
+knitr::include_graphics(km_file)
+```
+
+## 5.2 Legitimacy patterns
+
+```{r, out.width="75%", fig.align="center"}
+knitr::include_graphics(illeg_file)
+```
+
+## 5.3 Health outcomes
+
+```{r, out.width="75%", fig.align="center"}
+knitr::include_graphics(lyte_file)
+```
+
+## 5.4 Model estimates
+
+```{r}
+kable(
+  lyte_tbl_war_fmt[
+    ,
+    .(term, estimate, std.error, statistic, p.value, odds_ratio, conf.low.or, conf.high.or)
+  ],
+  col.names = c("Term", "Estimate", "SE", "z", "p", "Odds ratio", "CI low", "CI high")
+)
+```
+
+## 5.5 Global tests for model terms
+
+```{r}
+kable(
+  lyte_global_war_fmt[
+    ,
+    .(term, df, statistic, p.value)
+  ],
+  col.names = c("Term", "Df", "LR Chi-square", "p")
+)
+```
+
+# 6. Discussion
+
+The results suggest that cohorts born during the Finnish War experienced altered early-life conditions with measurable consequences for both survival and health.
+
+The observed patterns are consistent with a combination of selection effects and direct causal impacts.
+
+# 7. Conclusion
+
+This study demonstrates that short-term crises can have lasting demographic effects. By combining detailed longitudinal data with cohort-based identification, we provide new evidence on the importance of early-life environments.
+
+## Acknowledgements {-}
+
+Optional.
+
+## Notes {-}
+
+Optional.

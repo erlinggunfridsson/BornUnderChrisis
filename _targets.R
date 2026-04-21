@@ -261,6 +261,44 @@ list(
   ),
   
   tar_target(
+    stillbirth_by_sex_ts,
+    make_stillbirth_by_sex_ts(
+      raw_individ_file,
+      start_year = 1790,
+      end_year = 1890,
+      boys_code = 1
+    )
+  ),
+  tar_target(
+    sex_stillbirth_panel_ts,
+    make_sex_and_stillbirth_panel_ts(
+      indiv_data,
+      raw_individ_file,
+      start_year = 1790,
+      end_year = 1890,
+      boys_code = 1
+    )
+  ),
+  
+  tar_target(
+    sex_stillbirth_panel_plot_file,
+    save_sex_and_stillbirth_panel_plot(
+      sex_stillbirth_panel_ts,
+      file.path("output", "descriptive", "figures", "sex_stillbirth_panel.png")
+    ),
+    format = "file"
+  ),
+  
+  tar_target(
+    stillbirth_by_sex_plot_file,
+    save_stillbirth_by_sex_plot(
+      stillbirth_by_sex_ts,
+      file.path("output", "descriptive", "figures", "stillbirth_by_sex.png")
+    ),
+    format = "file"
+  ),
+  
+  tar_target(
     lyte_prediction_plot_file,
     save_lyte_prediction_plot(
       lyte_prediction_results,
@@ -268,6 +306,27 @@ list(
       file.path("output", case_tbl$case, "figures", "lyte_prediction_plot.png")
     ),
     pattern = map(lyte_prediction_results, case_tbl),
+    format = "file"
+  ),
+  
+  tar_target(
+    boy_share_live_still_ts,
+    make_boy_share_live_still_ts(
+      raw_individ_file,
+      start_year = 1790,
+      end_year = 1890,
+      boys_code = 1,
+      girls_code = 2,
+      stillbirth_code = 1
+    )
+  ),
+  
+  tar_target(
+    boy_share_live_still_plot_file,
+    save_boy_share_live_still_plot(
+      boy_share_live_still_ts,
+      file.path("output", "descriptive", "figures", "boy_share_live_still.png")
+    ),
     format = "file"
   ),
   

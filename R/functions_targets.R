@@ -1142,3 +1142,245 @@ save_sex_ratio_plot <- function(sex_ratio_ts, path) {
   
   path
 }
+
+make_stillbirth_by_sex_ts <- function(raw_individ_file,
+                                      start_year = 1790,
+                                      end_year = 1890,
+                                      boys_code = 1) {
+  
+  DT <- data.table::fread(raw_individ_file)
+  
+  DT <- DT[
+    !is.na(FODDAT) & !is.na(DODFODD) & !is.na(KON),
+    .(
+      fod_ar = as.integer(substr(FODDAT, 1, 4)),
+      dodfodd = DODFODD,
+      kon = KON
+    )
+  ]
+  
+  DT <- DT[fod_ar >= start_year & fod_ar <= end_year]
+  
+  out <- DT[
+    ,
+    .(
+      n_births = .N,
+      share_stillborn = mean(dodfodd == 1)
+    ),
+    by = .(fod_ar, kon)
+  ][order(fod_ar)]
+  
+  # snygg etikett
+  out[, sex := ifelse(kon == boys_code, "Boys", "Girls")]
+  
+  out
+}
+
+save_stillbirth_by_sex_plot <- function(stillbirth_ts, path) {
+  
+  p <- ggplot2::ggplot(
+    stillbirth_ts,
+    ggplot2::aes(x = fod_ar, y = share_stillborn, color = sex)
+  ) +
+    ggplot2::geom_line(linewidth = 0.7) +
+    ggplot2::geom_point(size = 1) +
+    ggplot2::scale_x_continuous(
+      breaks = seq(1790, 1890, by = 10)
+    ) +
+    ggplot2::labs(
+      title = "Annual share of stillbirths by sex, 1790–1890",
+      x = "Birth year",
+      y = "Share stillborn",
+      color = ""
+    ) +
+    ggplot2::theme_minimal(base_size = 11)
+  
+  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+  
+  ggplot2::ggsave(
+    filename = path,
+    plot = p,
+    width = 8,
+    height = 5,
+    dpi = 300
+  )
+  
+  path
+}
+
+make_sex_and_stillbirth_panel_ts <- function(indiv_data,
+                                             raw_individ_file,
+                                             start_year = 1790,
+                                             end_year = 1890,
+                                             boys_code = 1,
+                                             girls_code = 2) {
+  
+  # --- Sex ratio (från indiv_data) ---
+  DT1 <- data.table::copy(data.table::as.data.table(indiv_data))
+  
+  sex_ts <- DT1[
+    !is.na(fod_ar) & !is.na(kon) &
+      kon %in% c(boys_code, girls_code) &
+      fod_ar >= start_year & fod_ar <= end_year,
+    .(
+      value = mean(kon == boys_code)
+    ),
+    by = fod_ar
+  ]
+  
+  sex_ts[, series := "Share boys"]
+  
+  # --- Stillbirths (från rådata) ---
+  DT2 <- data.table::fread(raw_individ_file)
+  
+  DT2 <- DT2[
+    !is.na(FODDAT) & !is.na(DODFODD) & !is.na(KON) &
+      KON %in% c(boys_code, girls_code),
+    .(
+      fod_ar = as.integer(substr(as.character(FODDAT), 1, 4)),
+      dodfodd = DODFODD,
+      kon = KON
+    )
+  ][
+    fod_ar >= start_year & fod_ar <= end_year
+  ]
+  
+  still_ts <- DT2[
+    ,
+    .(
+      n_births = .N,
+      value = mean(dodfodd == 1)
+    ),
+    by = .(fod_ar, kon)
+  ][order(fod_ar)]
+  
+  still_ts[kon == boys_code, series := "Stillbirths (boys)"]
+  still_ts[kon == girls_code, series := "Stillbirths (girls)"]
+  still_ts[, kon := NULL]
+  
+  out <- data.table::rbindlist(list(sex_ts, still_ts), fill = TRUE)
+  
+  out[]
+}
+
+
+
+save_sex_and_stillbirth_panel_plot <- function(panel_ts, path) {
+  
+  p <- ggplot2::ggplot(
+    panel_ts,
+    ggplot2::aes(x = fod_ar, y = value)
+  ) +
+    ggplot2::geom_line(linewidth = 0.7) +
+    ggplot2::geom_point(size = 0.8) +
+    ggplot2::facet_wrap(
+      ~series,
+      ncol = 1,
+      scales = "free_y"
+    ) +
+    ggplot2::scale_x_continuous(
+      breaks = seq(1790, 1890, by = 10)
+    ) +
+    ggplot2::labs(
+      x = "Birth year",
+      y = NULL,
+      title = "Sex ratio and stillbirths, 1790–1890"
+    ) +
+    ggplot2::theme_minimal(base_size = 11) +
+    ggplot2::theme(
+      strip.text = ggplot2::element_text(face = "bold")
+    )
+  
+  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+  
+  ggplot2::ggsave(
+    filename = path,
+    plot = p,
+    width = 8,
+    height = 7,
+    dpi = 300
+  )
+  
+  path
+}
+
+make_boy_share_live_still_ts <- function(raw_individ_file,
+                                         start_year = 1790,
+                                         end_year = 1890,
+                                         boys_code = 1,
+                                         girls_code = 2,
+                                         stillbirth_code = 1) {
+  
+  DT <- data.table::fread(raw_individ_file)
+  
+  DT <- DT[
+    !is.na(FODDAT) & !is.na(DODFODD) & !is.na(KON) &
+      KON %in% c(boys_code, girls_code),
+    .(
+      fod_ar = as.integer(substr(as.character(FODDAT), 1, 4)),
+      dodfodd = DODFODD,
+      kon = KON
+    )
+  ][
+    fod_ar >= start_year & fod_ar <= end_year
+  ]
+  
+  live_ts <- DT[
+    dodfodd != stillbirth_code,
+    .(
+      n = .N,
+      value = mean(kon == boys_code)
+    ),
+    by = fod_ar
+  ][order(fod_ar)]
+  
+  live_ts[, series := "Share boys among live births"]
+  
+  still_ts <- DT[
+    dodfodd == stillbirth_code,
+    .(
+      n = .N,
+      value = mean(kon == boys_code)
+    ),
+    by = fod_ar
+  ][order(fod_ar)]
+  
+  still_ts[, series := "Share boys among stillbirths"]
+  
+  out <- data.table::rbindlist(list(live_ts, still_ts), fill = TRUE)
+  
+  out[]
+}
+
+save_boy_share_live_still_plot <- function(panel_ts, path) {
+  
+  p <- ggplot2::ggplot(
+    panel_ts,
+    ggplot2::aes(x = fod_ar, y = value, color = series)
+  ) +
+    ggplot2::geom_line(linewidth = 0.8) +
+    ggplot2::geom_point(size = 1) +
+    ggplot2::geom_hline(yintercept = 0.5, linetype = 2) +
+    ggplot2::scale_x_continuous(
+      breaks = seq(1790, 1890, by = 10)
+    ) +
+    ggplot2::labs(
+      title = "Share boys among live births and stillbirths, 1790–1890",
+      x = "Birth year",
+      y = "Share boys",
+      color = NULL
+    ) +
+    ggplot2::theme_minimal(base_size = 11)
+  
+  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+  
+  ggplot2::ggsave(
+    filename = path,
+    plot = p,
+    width = 8,
+    height = 5,
+    dpi = 300
+  )
+  
+  path
+}

@@ -162,6 +162,12 @@ lyte_file <- normalizePath(lyte_file, mustWork = TRUE)
 sex_ratio_file <- tar_read(sex_ratio_plot_file, store = store_path)
 sex_ratio_file <- normalizePath(sex_ratio_file, mustWork = TRUE)
 
+panel_file <- tar_read(sex_stillbirth_panel_plot_file, store = "_targets")
+panel_file <- normalizePath(panel_file, mustWork = TRUE)
+
+boy_share_live_still_file <- tar_read(boy_share_live_still_plot_file, store = "_targets")
+boy_share_live_still_file <- normalizePath(boy_share_live_still_file, mustWork = TRUE)
+
 stopifnot(file.exists(km_file))
 stopifnot(file.exists(illeg_file))
 stopifnot(file.exists(lyte_file))
@@ -280,6 +286,19 @@ Crisis might result in selection in uterus. Boys might be more vulnerable to cri
 ```{r, out.width="75%", fig.align="center"}
 image_md(sex_ratio_file)
 ```
+
+
+## Still births
+
+```{r, out.width="80%", fig.align="center"}
+image_md(panel_file)
+```
+
+```{r, out.width="80%", fig.align="center"}
+image_md(boy_share_live_still_file)
+```
+
+
 
 ## Health outcomes, risk of disability
 

@@ -187,6 +187,19 @@ filter_to_region_and_parishes <- function(spells, region_code, parish_names) {
   DT[]
 }
 
+censor_spells <- function(DT, censor_date = as.Date("1890-01-01")) {
+  DT <- data.table::copy(DT)
+  
+  DT <- DT[is.na(bob_date) | bob_date < censor_date]
+  
+  DT[
+    !is.na(bos_date) & bos_date >= censor_date,
+    bos_date := censor_date
+  ]
+  
+  DT[]
+}
+
 regularize_spells <- function(DT, gap_years = 2) {
   DT <- data.table::copy(DT)
   gap_days <- round(365.25 * gap_years)
@@ -243,7 +256,7 @@ regularize_spells <- function(DT, gap_years = 2) {
   out[]
 }
 
-collapse_to_individual <- function(DT, gap_years = 2) {
+collapse_to_individual <- function(DT, gap_years = 2, censor_date = as.Date("1890-01-01")) {
   DT <- data.table::copy(DT)
   gap_days <- round(365.25 * gap_years)
   
@@ -277,6 +290,7 @@ collapse_to_individual <- function(DT, gap_years = 2) {
       
       first_type <- x_epi$bobtyp[first_row]
       last_type <- x_epi$bostyp[last_row]
+      last_bos <- x_epi$bos_date[last_row]
       
       ab_vals <- x_epi$ab[!is.na(x_epi$ab)]
       dodfodd_vals <- x_epi$dodfodd[!is.na(x_epi$dodfodd)]
@@ -306,11 +320,12 @@ collapse_to_individual <- function(DT, gap_years = 2) {
         entry_type = first_type,
         
         last_bob_date = x_epi$bob_date[last_row],
-        last_bos_date = x_epi$bos_date[last_row],
+        last_bos_date = last_bos,
         exit_type = last_type,
         
         entered_as_birth = first_type == 2L,
-        exited_by_death = last_type == 2L,
+        exited_by_death = (last_type == 2L) & !is.na(last_bos) & (last_bos < censor_date),
+        censored_admin = !is.na(last_bos) & (last_bos >= censor_date),
         
         ab = if (length(ab_vals) == 0L) NA_integer_ else ab_vals[1L],
         legitim = if (length(ab_vals) == 0L) NA else ab_vals[1L] == 1L,
@@ -419,7 +434,8 @@ make_descriptive_table <- function(dat, case) {
     share_entered_as_birth = DT[, mean(entered_as_birth, na.rm = TRUE)],
     share_exited_by_death = DT[, mean(exited_by_death, na.rm = TRUE)],
     share_oakta = DT[, mean(oakta, na.rm = TRUE)],
-    share_had_large_gap = DT[, mean(had_large_gap, na.rm = TRUE)]
+    share_had_large_gap = DT[, mean(had_large_gap, na.rm = TRUE)],
+    share_censored_admin = DT[, mean(censored_admin, na.rm = TRUE)]
   )
 }
 
@@ -486,7 +502,121 @@ tidy_model <- function(model, case, model_name) {
   out[]
 }
 
-make_km_data <- function(dat, case, years_before = 3, years_after = 3) {
+make_km_data <- function(dat, case, censor_date = as.Date("1890-01-01"), years_before = 3, years_after = 3) {
+  DT <- data.table::copy(dat)
+  
+  if (case == "war") {
+    crisis_start_year <- 1808L
+    crisis_end_year <- 1809L
+  } else if (case == "famine") {
+    crisis_start_year <- 1866L
+    crisis_end_year <- 1868L
+  } else {
+    stop("Unknown case: ", case, call. = FALSE)
+  }
+  
+  DT <- DT[
+    !is.na(fod_ar) &
+      fod_ar >= (crisis_start_year - years_before) &
+      fod_ar <= (crisis_end_year + years_after)
+  ]
+  
+  DT <- DT[
+    !is.na(fod_date) &
+      !is.na(last_bos_date) &
+      !is.na(kon)
+  ]
+  
+  DT[, event := as.integer(
+    exited_by_death == TRUE &
+      last_bos_date < censor_date
+  )]
+  
+  DT[, time_days := as.numeric(last_bos_date - fod_date)]
+  DT <- DT[!is.na(time_days) & time_days >= 0]
+  DT[, time_years := time_days / 365.25]
+  
+  DT[, cohort := as.factor(fod_ar)]
+  DT[, sex := fifelse(
+    as.integer(as.character(kon)) == 1L, "Boys",
+    fifelse(as.integer(as.character(kon)) == 2L, "Girls", NA_character_)
+  )]
+  DT <- DT[!is.na(sex)]
+  
+  DT[]
+}
+
+fit_km_curve <- function(km_data) {
+  DT <- data.table::copy(km_data)
+  
+  survival::survfit(
+    survival::Surv(time_years, event) ~ cohort + sex,
+    data = DT
+  )
+}
+
+tidy_km_fit <- function(km_fit, case) {
+  s <- summary(km_fit)
+  
+  out <- data.table::data.table(
+    time = s$time,
+    surv = s$surv,
+    n_risk = s$n.risk,
+    n_event = s$n.event,
+    n_censor = s$n.censor,
+    strata = as.character(s$strata)
+  )
+  
+  out[, cohort := sub("^cohort=([0-9]+), sex=.*$", "\\1", strata)]
+  out[, sex := sub("^cohort=[0-9]+, sex=(.*)$", "\\1", strata)]
+  out[, cohort := as.integer(cohort)]
+  out[, case := case]
+  out[]
+}
+
+save_km_plot <- function(km_tidy, case, path) {
+  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+  
+  ymin <- floor(min(km_tidy$surv, na.rm = TRUE) * 10) / 10
+  ymax <- 1
+  
+  p <- ggplot2::ggplot(
+    km_tidy,
+    ggplot2::aes(
+      x = time,
+      y = surv,
+      group = cohort,
+      color = factor(cohort)
+    )
+  ) +
+    ggplot2::geom_step(linewidth = 0.7) +
+    ggplot2::facet_wrap(~ sex) +
+    ggplot2::labs(
+      title = paste("Kaplan–Meier by birth year and sex:", case),
+      x = "Age (years)",
+      y = "Survival probability",
+      color = "Birth year"
+    ) +
+    ggplot2::scale_y_continuous(
+      limits = c(ymin, ymax),
+      breaks = seq(ymin, ymax, by = 0.05)
+    ) +
+    ggplot2::scale_x_continuous(
+      breaks = seq(0, max(km_tidy$time, na.rm = TRUE), by = 10)
+    )
+  
+  ggplot2::ggsave(
+    filename = path,
+    plot = p,
+    width = 10,
+    height = 6,
+    dpi = 300
+  )
+  
+  path
+}
+
+make_km_data_legitimacy <- function(dat, case, censor_date = as.Date("1890-01-01"), years_before = 3, years_after = 3) {
   DT <- data.table::copy(dat)
   
   if (case == "war") {
@@ -510,25 +640,35 @@ make_km_data <- function(dat, case, years_before = 3, years_after = 3) {
       !is.na(last_bos_date)
   ]
   
-  DT[, event := as.integer(exited_by_death %in% TRUE)]
+  DT[, event := as.integer(
+    exited_by_death == TRUE &
+      last_bos_date < censor_date
+  )]
+  
   DT[, time_days := as.numeric(last_bos_date - fod_date)]
   DT <- DT[!is.na(time_days) & time_days >= 0]
   DT[, time_years := time_days / 365.25]
   
   DT[, cohort := as.factor(fod_ar)]
+  DT[, legitimacy := fifelse(
+    legitim %in% TRUE, "Legitimate",
+    fifelse(oakta %in% TRUE, "Illegitimate", NA_character_)
+  )]
+  DT <- DT[!is.na(legitimacy)]
+  
   DT[]
 }
 
-fit_km_curve <- function(km_data) {
+fit_km_curve_legitimacy <- function(km_data) {
   DT <- data.table::copy(km_data)
   
   survival::survfit(
-    survival::Surv(time_years, event) ~ cohort,
+    survival::Surv(time_years, event) ~ cohort + legitimacy,
     data = DT
   )
 }
 
-tidy_km_fit <- function(km_fit, case) {
+tidy_km_fit_legitimacy <- function(km_fit, case) {
   s <- summary(km_fit)
   
   out <- data.table::data.table(
@@ -540,14 +680,18 @@ tidy_km_fit <- function(km_fit, case) {
     strata = as.character(s$strata)
   )
   
-  out[, cohort := sub("^cohort=", "", strata)]
+  out[, cohort := sub("^cohort=([0-9]+), legitimacy=.*$", "\\1", strata)]
+  out[, legitimacy := sub("^cohort=[0-9]+, legitimacy=(.*)$", "\\1", strata)]
   out[, cohort := as.integer(cohort)]
   out[, case := case]
   out[]
 }
 
-save_km_plot <- function(km_tidy, case, path) {
+save_km_plot_legitimacy <- function(km_tidy, case, path) {
   dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+  
+  ymin <- floor(min(km_tidy$surv, na.rm = TRUE) * 10) / 10
+  ymax <- 1
   
   p <- ggplot2::ggplot(
     km_tidy,
@@ -559,17 +703,16 @@ save_km_plot <- function(km_tidy, case, path) {
     )
   ) +
     ggplot2::geom_step(linewidth = 0.7) +
+    ggplot2::facet_wrap(~ legitimacy) +
     ggplot2::labs(
-      title = paste("Kaplan–Meier by birth year:", case),
+      title = paste("Kaplan–Meier by birth year and legitimacy:", case),
       x = "Age (years)",
       y = "Survival probability",
       color = "Birth year"
     ) +
-    
-    # 🔑 Axlar
     ggplot2::scale_y_continuous(
-      breaks = seq(0, 1, by = 0.1),
-      limits = c(0, 1)
+      limits = c(ymin, ymax),
+      breaks = seq(ymin, ymax, by = 0.05)
     ) +
     ggplot2::scale_x_continuous(
       breaks = seq(0, max(km_tidy$time, na.rm = TRUE), by = 10)
@@ -578,7 +721,7 @@ save_km_plot <- function(km_tidy, case, path) {
   ggplot2::ggsave(
     filename = path,
     plot = p,
-    width = 8,
+    width = 10,
     height = 6,
     dpi = 300
   )
@@ -586,27 +729,172 @@ save_km_plot <- function(km_tidy, case, path) {
   path
 }
 
-# Add these functions at the end of your existing R/functions_targets.R
-# This is a patch file, not a complete replacement.
+make_illegitimacy_time_series <- function(dat, case, years_before = 10, years_after = 10) {
+  DT <- data.table::copy(dat)
+  
+  if (case == "war") {
+    crisis_start_year <- 1808L
+    crisis_end_year   <- 1809L
+  } else if (case == "famine") {
+    crisis_start_year <- 1866L
+    crisis_end_year   <- 1868L
+  } else {
+    stop("Unknown case: ", case, call. = FALSE)
+  }
+  
+  DT <- DT[
+    !is.na(fod_ar) &
+      fod_ar >= (crisis_start_year - years_before) &
+      fod_ar <= (crisis_end_year + years_after) &
+      !is.na(oakta)
+  ]
+  
+  out <- DT[
+    ,
+    .(
+      n_births = .N,
+      n_illegitimate = sum(oakta %in% TRUE, na.rm = TRUE),
+      share_illegitimate = mean(oakta %in% TRUE, na.rm = TRUE)
+    ),
+    by = .(fod_ar)
+  ]
+  
+  out[, case := case]
+  data.table::setorder(out, fod_ar)
+  out[]
+}
 
-censor_spells <- function(DT, censor_date) {
-  DT <- data.table::copy(data.table::as.data.table(DT))
+save_illegitimacy_plot <- function(ts_data, case, path) {
+  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
   
-  if (!"bos_date" %in% names(DT)) {
-    stop("DT must contain bos_date", call. = FALSE)
+  ymax <- max(ts_data$share_illegitimate, na.rm = TRUE)
+  ymax <- ceiling(ymax * 100) / 100
+  
+  p <- ggplot2::ggplot(
+    ts_data,
+    ggplot2::aes(x = fod_ar, y = share_illegitimate)
+  ) +
+    ggplot2::geom_line(linewidth = 0.8) +
+    ggplot2::geom_point(size = 1.5) +
+    ggplot2::labs(
+      title = paste("Share of illegitimate births:", case),
+      x = "Birth year",
+      y = "Share illegitimate"
+    ) +
+    ggplot2::scale_y_continuous(
+      limits = c(0, ymax),
+      breaks = seq(0, ymax, by = 0.01)
+    )
+  
+  ggplot2::ggsave(path, p, width = 8, height = 5, dpi = 300)
+  path
+}
+
+save_birth_counts_plot <- function(ts_data, case, path) {
+  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+  
+  p <- ggplot2::ggplot(
+    ts_data,
+    ggplot2::aes(x = fod_ar, y = n_births)
+  ) +
+    ggplot2::geom_line(linewidth = 0.8) +
+    ggplot2::geom_point(size = 1.5) +
+    ggplot2::labs(
+      title = paste("Birth counts over time:", case),
+      x = "Birth year",
+      y = "Number of births"
+    ) +
+    ggplot2::scale_x_continuous(
+      breaks = seq(min(ts_data$fod_ar, na.rm = TRUE), max(ts_data$fod_ar, na.rm = TRUE), by = 1)
+    )
+  
+  ggplot2::ggsave(
+    filename = path,
+    plot = p,
+    width = 8,
+    height = 5,
+    dpi = 300
+  )
+  
+  path
+}
+
+make_lyte_model_data <- function(indiv_data, lyte, case, censor_date = as.Date("1890-01-01"),
+                                 years_before = 3, years_after = 3) {
+  
+  DT <- data.table::copy(indiv_data)
+  ly <- data.table::copy(lyte)
+  
+  ly[, ddbid := as.character(ddbid)]
+  
+  if (!"lyte_bdate" %in% names(ly)) {
+    if ("lytebdat" %in% names(ly)) {
+      ly[, lyte_bdate := parse_popum_date(lytebdat)]
+    } else {
+      stop("No lyte date column found.", call. = FALSE)
+    }
   }
   
-  if (!inherits(censor_date, "Date")) {
-    censor_date <- as.Date(censor_date)
+  ly_first <- ly[
+    !is.na(lyte_bdate),
+    .(first_lyte_date = min(lyte_bdate)),
+    by = ddbid
+  ]
+  
+  DT <- ly_first[DT, on = "ddbid"]
+  
+  if (case == "war") {
+    crisis_start <- 1808L
+    crisis_end   <- 1809L
+  } else if (case == "famine") {
+    crisis_start <- 1866L
+    crisis_end   <- 1868L
+  } else {
+    stop("Unknown case")
   }
   
-  if ("bob_date" %in% names(DT)) {
-    DT <- DT[is.na(bob_date) | bob_date <= censor_date]
-  }
+  DT <- DT[
+    fod_ar >= (crisis_start - years_before) &
+      fod_ar <= (crisis_end + years_after)
+  ]
   
-  DT[!is.na(bos_date) & bos_date > censor_date, bos_date := censor_date]
+  DT[, age_lyte := as.numeric(first_lyte_date - fod_date) / 365.25]
+  DT[, age_end  := as.numeric(last_bos_date - fod_date) / 365.25]
   
-  DT
+  DT[, lyte_before_20 := !is.na(age_lyte) & age_lyte <= 20]
+  
+  DT <- DT[
+    lyte_before_20 == TRUE |
+      (!is.na(age_end) & age_end >= 20)
+  ]
+  
+  DT[, kon := as.factor(kon)]
+  DT[, fod_ar := as.integer(fod_ar)]
+  
+  DT[, legitimacy := fifelse(
+    legitim %in% TRUE, "Legitimate",
+    fifelse(oakta %in% TRUE, "Illegitimate", NA_character_)
+  )]
+  DT[, legitimacy := factor(legitimacy)]
+  
+  DT[]
+}
+
+fit_lyte_model <- function(dat) {
+  DT <- data.table::copy(dat)
+  
+  model_data <- DT[
+    !is.na(lyte_before_20) &
+      !is.na(kon) &
+      !is.na(fod_ar) &
+      !is.na(oakta)
+  ]
+  
+  stats::glm(
+    lyte_before_20 ~ kon + factor(fod_ar) + oakta,
+    data = model_data,
+    family = stats::binomial()
+  )
 }
 
 tidy_lyte_model <- function(model) {
@@ -694,33 +982,114 @@ format_global_tests <- function(dt, digits = 2) {
   dt
 }
 
-clean_lyte_terms <- function(dt) {
-  dt <- data.table::copy(data.table::as.data.table(dt))
+tidy_global_tests <- function(model) {
+  out <- as.data.frame(drop1(model, test = "Chisq"))
+  out$term <- rownames(out)
+  rownames(out) <- NULL
   
-  if (!"term" %in% names(dt)) {
-    return(dt)
-  }
+  pcol <- grep("^Pr\\(", names(out), value = TRUE)
+  statcol <- intersect(c("LRT", "AIC"), names(out))
   
-  dt[term == "(Intercept)", term := "Intercept"]
-  dt[term == "kon1", term := "Sex: category 1"]
-  dt[term == "kon2", term := "Sex: category 2"]
-  dt[term == "oaktaTRUE", term := "Illegitimate birth"]
-  dt[grepl("^factor\\(fod_ar\\)", term),
-     term := sub("^factor\\(fod_ar\\)", "Birth year: ", term)]
-  
-  dt
+  data.table::as.data.table(out)[
+    term != "<none>",
+    .(
+      term = term,
+      df = if ("Df" %in% names(out)) Df else NA_real_,
+      statistic = if ("LRT" %in% names(out)) LRT else NA_real_,
+      p.value = if (length(pcol) == 1) get(pcol) else NA_real_
+    )
+  ]
 }
 
-clean_global_terms <- function(dt) {
-  dt <- data.table::copy(data.table::as.data.table(dt))
+make_lyte_prediction_data <- function(dat) {
+  DT <- data.table::copy(dat)
   
-  if (!"term" %in% names(dt)) {
-    return(dt)
-  }
+  years <- sort(unique(DT$fod_ar))
+  sexes <- sort(unique(DT$kon))
   
-  dt[term == "kon", term := "Sex"]
-  dt[term == "oakta", term := "Illegitimate birth"]
-  dt[term == "factor(fod_ar)", term := "Birth year"]
+  pred <- data.table::CJ(
+    fod_ar = years,
+    kon = sexes
+  )
   
-  dt
+  # sätt oakta till referens (t.ex. FALSE)
+  pred[, oakta := FALSE]
+  
+  pred[]
+}
+
+predict_lyte_model <- function(model, newdata) {
+  ND <- data.table::copy(newdata)
+  
+  p <- stats::predict(
+    model,
+    newdata = ND,
+    type = "response",
+    se.fit = TRUE
+  )
+  
+  ND[, fit := p$fit]
+  ND[, se.fit := p$se.fit]
+  
+  lp <- stats::predict(model, newdata = ND, type = "link", se.fit = TRUE)
+  ND[, fit_link := lp$fit]
+  ND[, se_link := lp$se.fit]
+  ND[, conf.low := stats::plogis(fit_link - 1.96 * se_link)]
+  ND[, conf.high := stats::plogis(fit_link + 1.96 * se_link)]
+  
+  ND[]
+}
+
+save_lyte_prediction_plot <- function(pred_data, case, path) {
+  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+  
+  DT <- data.table::copy(pred_data)
+  
+  # Snygga könsetiketter
+  DT[, kon_label := factor(
+    kon,
+    levels = c(1, 2),
+    labels = c("Men", "Women")
+  )]
+  
+  # Dynamisk y-axel
+  ymax <- max(DT$conf.high, na.rm = TRUE)
+  ymax <- ceiling(ymax * 1000) / 1000
+  
+  p <- ggplot2::ggplot(
+    DT,
+    ggplot2::aes(
+      x = fod_ar,
+      y = fit,
+      color = kon_label,
+      fill = kon_label
+    )
+  ) +
+    ggplot2::geom_ribbon(
+      ggplot2::aes(ymin = conf.low, ymax = conf.high),
+      alpha = 0.15,
+      color = NA
+    ) +
+    ggplot2::geom_line(linewidth = 0.9) +
+    ggplot2::labs(
+      title = paste("Predicted probability of lyte before age 20:", case),
+      x = "Birth year",
+      y = "Predicted probability",
+      color = "Sex",
+      fill = "Sex"
+    ) +
+    ggplot2::scale_y_continuous(
+      limits = c(0, ymax),
+      breaks = seq(0, ymax, by = 0.005)
+    )
+  
+  ggplot2::ggsave(
+    filename = path,
+    plot = p,
+    width = 9,
+    height = 5.5,
+    dpi = 300
+  )
+  
+  path
 }

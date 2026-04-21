@@ -1,25 +1,26 @@
 ---
 title: "Born under crisis: Early-life conditions and health outcomes during the Finnish War"
 author:
-  - name: "Erling Häggström Gunfridsson"
-    affiliation: "Umeå University"
-  - name: "Elina Nordun Omnell"
-    affiliation: "Umeå University"
+ - name: "Erling Häggström Gunfridsson"
+   affiliation: "Umeå University"
+ - name: "Elina Nordun Omnell"
+   affiliation: "Umeå University"
 date: today
 format:
-  html:
-    toc: true
-    number-sections: true
-  pdf:
-    toc: true
-    number-sections: true
-    documentclass: article
-    geometry: margin=2.5cm
-    fontsize: 11pt
+ html:
+   toc: true
+   number-sections: true
+ pdf:
+   toc: true
+   number-sections: true
+   documentclass: article
+   geometry: margin=2.5cm
+   fontsize: 11pt
 execute:
-  echo: false
-  warning: false
-  message: false
+ echo: false
+ warning: false
+ message: false
+ dir: project
 ---
 
 ## Abstract {-}
@@ -28,11 +29,15 @@ This paper examines the long-term consequences of early-life exposure to crisis 
 
 **Keywords:** early-life conditions, mortality, health, Finnish War, historical demography
 
+
 ```{r}
 library(targets)
 library(data.table)
 library(ggplot2)
 library(knitr)
+
+case_name <- "war"
+store_path <- "_targets"
 
 pick_case_table <- function(x, case_name = "war") {
   dt <- data.table::as.data.table(x)
@@ -42,35 +47,6 @@ pick_case_table <- function(x, case_name = "war") {
     stop(sprintf("No rows found for case '%s'.", case_name), call. = FALSE)
   }
   out
-}
-
-pick_case_file <- function(x, case_name = "war") {
-  if (is.character(x)) {
-    hit <- grepl(paste0("/", case_name, "/"), x, fixed = TRUE)
-    if (any(hit)) return(unname(x[hit][1]))
-    nms <- names(x)
-    if (!is.null(nms)) {
-      hit_nms <- grepl(case_name, nms, fixed = TRUE)
-      if (any(hit_nms)) return(unname(x[hit_nms][1]))
-    }
-    if (length(x) == 1L) return(unname(x[1]))
-  }
-
-  dt <- data.table::as.data.table(x)
-  if ("case" %in% names(dt)) {
-    out <- dt[case == case_name]
-    if (nrow(out) == 0L) {
-      stop(sprintf("No file found for case '%s'.", case_name), call. = FALSE)
-    }
-  } else {
-    out <- dt
-  }
-
-  for (nm in c("path", "file", "value")) {
-    if (nm %in% names(out)) return(out[[nm]][[1]])
-  }
-
-  stop("Could not identify the correct file for the selected case.", call. = FALSE)
 }
 
 format_p_value <- function(p) {
@@ -101,6 +77,7 @@ format_lyte_table <- function(dt, digits = 3) {
     c("estimate", "std.error", "statistic", "odds_ratio", "conf.low.or", "conf.high.or"),
     names(dt)
   )
+
   if (length(num_cols) > 0) {
     dt[, (num_cols) := lapply(.SD, round, digits), .SDcols = num_cols]
   }
@@ -119,6 +96,7 @@ format_global_tests <- function(dt, digits = 2) {
   dt <- dt[, ..keep]
 
   num_cols <- intersect(c("df", "statistic"), names(dt))
+
   if (length(num_cols) > 0) {
     dt[, (num_cols) := lapply(.SD, round, digits), .SDcols = num_cols]
   }
@@ -132,7 +110,7 @@ format_global_tests <- function(dt, digits = 2) {
 
 clean_term_labels <- function(x) {
   x <- gsub("^factor\\(fod_ar\\)", "Birth year: ", x)
-  x <- gsub("^fod_ar", "Birth year", x)
+  x <- gsub("^fod_ar$", "Birth year", x)
   x <- gsub("^oaktaTRUE$", "Illegitimate birth", x)
   x <- gsub("^oakta$", "Illegitimate birth", x)
   x <- gsub("^kon$", "Sex", x)
@@ -141,9 +119,12 @@ clean_term_labels <- function(x) {
   x
 }
 
-case_name <- "war"
-store_path <- "../_targets"
+image_md <- function(path) {
+  uri <- knitr::image_uri(path)
+  knitr::asis_output(sprintf("![](%s)", uri))
+}
 
+# tables
 desc_all <- tar_read(descriptive_table, store = store_path)
 desc_war <- pick_case_table(desc_all, case_name)
 
@@ -153,19 +134,24 @@ lyte_tbl_war <- pick_case_table(lyte_tbl_all, case_name)
 lyte_global_all <- tar_read(lyte_global_tests, store = store_path)
 lyte_global_war <- pick_case_table(lyte_global_all, case_name)
 
-km_file <- pick_case_file(tar_read(km_plot_file, store = store_path), case_name)
-km_file <- file.path("..", km_file)
+# figures
+km_vec <- tar_read(km_plot_file, store = store_path)
+km_file <- km_vec[grepl("/war/", km_vec, fixed = TRUE)][1]
+km_file <- normalizePath(km_file, mustWork = TRUE)
 
-illeg_file <- pick_case_file(tar_read(illegitimacy_plot_file, store = store_path), case_name)
-illeg_file <- file.path("..", illeg_file)
+illeg_vec <- tar_read(illegitimacy_plot_file, store = store_path)
+illeg_file <- illeg_vec[grepl("/war/", illeg_vec, fixed = TRUE)][1]
+illeg_file <- normalizePath(illeg_file, mustWork = TRUE)
 
-lyte_file <- pick_case_file(tar_read(lyte_prediction_plot_file, store = store_path), case_name)
-lyte_file <- file.path("..", lyte_file)
+lyte_vec <- tar_read(lyte_prediction_plot_file, store = store_path)
+lyte_file <- lyte_vec[grepl("/war/", lyte_vec, fixed = TRUE)][1]
+lyte_file <- normalizePath(lyte_file, mustWork = TRUE)
 
 stopifnot(file.exists(km_file))
 stopifnot(file.exists(illeg_file))
 stopifnot(file.exists(lyte_file))
 
+# formatted tables
 lyte_tbl_war_fmt <- format_lyte_table(lyte_tbl_war, digits = 3)
 if ("term" %in% names(lyte_tbl_war_fmt)) {
   lyte_tbl_war_fmt[, term := clean_term_labels(term)]
@@ -215,19 +201,22 @@ Cohorts are defined within a narrow time window around the Finnish War.
 ## 5.1 Survival
 
 ```{r, out.width="75%", fig.align="center"}
-knitr::include_graphics(km_file)
+# knitr::include_graphics(km_file)
+image_md(km_file)
 ```
 
 ## 5.2 Legitimacy patterns
 
 ```{r, out.width="75%", fig.align="center"}
-knitr::include_graphics(illeg_file)
+# knitr::include_graphics(illeg_file)
+image_md(illeg_file)
 ```
 
 ## 5.3 Health outcomes
 
 ```{r, out.width="75%", fig.align="center"}
-knitr::include_graphics(lyte_file)
+# knitr::include_graphics(lyte_file)
+image_md(lyte_file)
 ```
 
 ## 5.4 Model estimates

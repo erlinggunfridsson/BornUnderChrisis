@@ -107,6 +107,12 @@ list(
   ),
   
   tar_target(
+    descriptive_table,
+    make_descriptive_table(analysis_data, case_tbl$case),
+    pattern = map(analysis_data, case_tbl)
+  ),
+  
+  tar_target(
     km_data,
     make_km_data(
       analysis_data,
@@ -251,4 +257,6 @@ list(
     paper_war,
     path = "reports/paper_war.qmd"
   )
+  
+
 )

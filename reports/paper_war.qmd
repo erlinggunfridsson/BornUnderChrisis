@@ -30,6 +30,17 @@ This paper examines the long-term consequences of early-life exposure to crisis 
 **Keywords:** early-life conditions, mortality, health, Finnish War, historical demography
 
 
+## Short bio {-}
+Erling Häggström Gunfridsson and Elina Nordung Omnell are researchers at the Centre for
+Demographic and Ageing Research (CEDAR) and the Demographic Data Base (DDB) at Umeå
+University. Their work centers on historical demography, with a particular focus on mortality, and
+reproductive patterns in pre-industrial Sweden.
+A core mission of CEDAR and DDB is the digitization and systematic linkage of historical Swedish
+parish records. Through record linkage, individuals and families can be followed longitudinally
+across time and place, enabling detailed analyses of demographic behavior, social stratification, and
+long-term health outcomes. Their research combines this large-scale longitudinal data to examine
+how crises and social inequality shape life courses and population dynamics.
+
 ```{r}
 library(targets)
 library(data.table)
@@ -134,6 +145,7 @@ lyte_tbl_war <- pick_case_table(lyte_tbl_all, case_name)
 lyte_global_all <- tar_read(lyte_global_tests, store = store_path)
 lyte_global_war <- pick_case_table(lyte_global_all, case_name)
 
+
 # figures
 km_vec <- tar_read(km_plot_file, store = store_path)
 km_file <- km_vec[grepl("/war/", km_vec, fixed = TRUE)][1]
@@ -146,6 +158,9 @@ illeg_file <- normalizePath(illeg_file, mustWork = TRUE)
 lyte_vec <- tar_read(lyte_prediction_plot_file, store = store_path)
 lyte_file <- lyte_vec[grepl("/war/", lyte_vec, fixed = TRUE)][1]
 lyte_file <- normalizePath(lyte_file, mustWork = TRUE)
+
+sex_ratio_file <- tar_read(sex_ratio_plot_file, store = store_path)
+sex_ratio_file <- normalizePath(sex_ratio_file, mustWork = TRUE)
 
 stopifnot(file.exists(km_file))
 stopifnot(file.exists(illeg_file))
@@ -163,31 +178,75 @@ if ("term" %in% names(lyte_global_war_fmt)) {
 }
 ```
 
-# 1. Introduction
+# Introduction
 
-Early-life conditions are widely recognised as key determinants of long-term health and survival. Periods of crisis, such as war or famine, provide exogenous variation in living conditions and therefore offer an opportunity to study these effects.
+Research on the demographic consequences of war has traditionally concentrated on excess
+mortality, particularly among soldiers and civilian populations directly exposed to violence, famine,
+and epidemic disease. Less attention has been paid to how armed conflict affects reproductive
+behavior and early-life conditions for children conceived and born during periods of crisis. This
+paper shifts the focus from mortality to fertility and early-life outcomes, examining how the Finnish
+War (1808–1809) affected women and children in northern Sweden, with particular attention to
+Västerbotten and the Umeå region.
 
-This paper examines cohorts born around the Finnish War (1808–1809) in northern Sweden. We analyse both survival and early-life health outcomes, measured through disability before age 20.
+The Finnish War, fought between Sweden and Russia, culminated in the loss of Finland to the
+Russian Empire and temporarily transformed parts of northern Sweden into a military frontier.
+Umeå and neighboring parishes became sites of troop movements, temporary encampments, and
+improvised military hospitals as Swedish forces retreated westward. Civilian communities were
+subjected to food requisitions, local disruption, and the spread of infectious disease. While the
+immediate mortality crisis has been documented, the longer-term demographic consequences for
+reproductive behavior and child outcomes remain underexplored.
 
-# 2. Historical context
+Using longitudinal parish register data, this study investigates three interrelated questions:
+
+First, did fertility decline during the war? Periods of military occupation, forced requisitions, and
+male inscription in the army may have disrupted marriage patterns and reduced conception rates. At
+the same time, stress, malnutrition, and disease exposure could have affected fertility and pregnancy
+outcomes.
+
+Second, did the composition of births change? We examine whether the proportion of non-marital
+births increased during the conflict, potentially reflecting disrupted social control, delayed marriage,
+altered partnership patterns, or asymmetric power relations between soldiers and civilian women.
+Spatial variation across parishes with differing levels of military presence allows us to evaluate
+whether such changes were locally concentrated.
+
+Third, what were the long-term consequences for children born during or immediately after the
+war? Using a life-course perspective, we follow exposed cohorts to assess infant and child
+mortality, later-life survival, and indicators of disability and socioeconomic disadvantage. Here we
+use the Developmental Origins of Health and Disease (DOHaD) framework, which emphasizes how
+conditions in utero and early childhood can have lasting effects on health, survival, and
+socioeconomic outcomes.
+We expect to observe a marked decline in fertility during the most intense phases of the conflict,
+followed by a post-war rebound indicative of postponed rather than permanently foregone
+childbearing. We further anticipate an increase in the proportion of non-marital births in parishes
+characterized by sustained military presence, reflecting disrupted marriage patterns and weakened
+local social regulation. Finally, we hypothesize that children conceived or born during the war will
+display elevated early-life mortality and, among survivors, signs of longer-term scarring consistent
+with early-life exposure to nutritional stress and infectious disease.
+By centering women and children rather than soldiers, this paper contributes to a more
+comprehensive understanding of war as a demographic shock. The Finnish War serves as a natural
+experiment illustrating how armed conflict reshapes fertility behavior, and life chances for cohorts
+born under crisis. These findings underscore the importance of incorporating reproductive and
+early-life perspectives into historical studies of war and population health.
+
+#  Historical context
 
 The Finnish War disrupted economic and social life across northern Sweden. Military mobilisation, institutional breakdown, and potential food shortages may have affected early-life conditions.
 
-Peripheral regions such as Västerbotten are particularly suitable for studying these effects due to their relative isolation and dependence on local production.
 
-# 3. Data
+
+#  Data
 
 The data are derived from the POPUM database and consist of linked individual-level records including birth, death, residence, and health indicators.
 
 Individuals are constructed from multiple residence spells, with adjustments for overlaps and gaps. Exit types are used to distinguish mortality from migration and censoring.
 
-## 3.1 Descriptive statistics
+##  Descriptive statistics
 
 ```{r}
 kable(desc_war)
 ```
 
-# 4. Methods
+# Methods
 
 We use two complementary approaches:
 
@@ -196,30 +255,40 @@ We use two complementary approaches:
 
 Cohorts are defined within a narrow time window around the Finnish War.
 
-# 5. Results
+#  Results
 
-## 5.1 Survival
+##  Survival
 
 ```{r, out.width="75%", fig.align="center"}
 # knitr::include_graphics(km_file)
 image_md(km_file)
 ```
 
-## 5.2 Legitimacy patterns
+
+
+##  Legitimacy patterns
+Crisis changes who gets a child, more unmarried?, more farmers? Results in selection bias. 
 
 ```{r, out.width="75%", fig.align="center"}
 # knitr::include_graphics(illeg_file)
 image_md(illeg_file)
 ```
 
-## 5.3 Health outcomes
+## Sex ratio
+Crisis might result in selection in uterus. Boys might be more vulnerable to crisis.
+
+```{r, out.width="75%", fig.align="center"}
+image_md(sex_ratio_file)
+```
+
+## Health outcomes, risk of disability
 
 ```{r, out.width="75%", fig.align="center"}
 # knitr::include_graphics(lyte_file)
-image_md(lyte_file)
+# image_md(lyte_file)
 ```
 
-## 5.4 Model estimates
+###  Model estimates
 
 ```{r}
 kable(
@@ -231,7 +300,7 @@ kable(
 )
 ```
 
-## 5.5 Global tests for model terms
+##  Global tests for model terms
 
 ```{r}
 kable(
@@ -243,13 +312,13 @@ kable(
 )
 ```
 
-# 6. Discussion
+#  Discussion
 
 The results suggest that cohorts born during the Finnish War experienced altered early-life conditions with measurable consequences for both survival and health.
 
 The observed patterns are consistent with a combination of selection effects and direct causal impacts.
 
-# 7. Conclusion
+#  Conclusion
 
 This study demonstrates that short-term crises can have lasting demographic effects. By combining detailed longitudinal data with cohort-based identification, we provide new evidence on the importance of early-life environments.
 

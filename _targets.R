@@ -77,7 +77,25 @@ list(
       gap_years = 2
     )
   ),
+  tar_target(
+    sex_ratio_ts,
+    make_sex_ratio_time_series(
+      indiv_data,
+      start_year = 1790,
+      end_year = 1890,
+      boys_code = 1
+    )
+  ),
   
+  tar_target(
+    sex_ratio_plot_file,
+    save_sex_ratio_plot(
+      sex_ratio_ts,
+      file.path("output", "descriptive", "figures", "sex_ratio_1790_1890.png")
+      # file.path("output", "descriptive", "figures", "sex_ratio_TEST.png")
+    ),
+    format = "file"
+  ),
   tar_target(
     crisis_window,
     get_crisis_window(case_tbl$case),

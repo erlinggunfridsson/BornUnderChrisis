@@ -1093,3 +1093,52 @@ save_lyte_prediction_plot <- function(pred_data, case, path) {
   
   path
 }
+
+make_sex_ratio_time_series <- function(indiv_data, start_year = 1790, end_year = 1890, boys_code = 1) {
+  DT <- data.table::copy(data.table::as.data.table(indiv_data))
+  
+  out <- DT[
+    !is.na(fod_ar) &
+      !is.na(kon) &
+      fod_ar >= start_year &
+      fod_ar <= end_year,
+    .(
+      n_births = .N,
+      share_boys = mean(kon == boys_code)
+    ),
+    by = fod_ar
+  ][order(fod_ar)]
+  
+  out
+}
+
+save_sex_ratio_plot <- function(sex_ratio_ts, path) {
+  p <- ggplot2::ggplot(
+    sex_ratio_ts,
+    ggplot2::aes(x = fod_ar, y = share_boys)
+  ) +
+    ggplot2::geom_line(linewidth = 0.7) +
+    ggplot2::geom_point(size = 1) +
+    ggplot2::geom_hline(yintercept = 0.5, linetype = 2) +
+    ggplot2::scale_x_continuous(
+      breaks = seq(1790, 1890, by = 10)
+    ) +
+    ggplot2::labs(
+      title = "Annual share of boys among births, 1790–1890",
+      x = "Birth year",
+      y = "Share boys"
+    ) +
+    ggplot2::theme_minimal(base_size = 11)
+  
+  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+  
+  ggplot2::ggsave(
+    filename = path,
+    plot = p,
+    width = 8,
+    height = 5,
+    dpi = 300
+  )
+  
+  path
+}

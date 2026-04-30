@@ -1,0 +1,11 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+*.js
+*.pdf
+*.html
+
+/.quarto/
+**/*.quarto_ipynb
+.positai

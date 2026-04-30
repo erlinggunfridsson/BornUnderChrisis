@@ -7,7 +7,7 @@ admin_censor_date <- as.Date("1890-01-01")
 tar_option_set(
   packages = c("data.table", "ggplot2", "broom", "survival")
 )
-
+ 
 source("R/functions_targets.R")
 
 cases <- data.table::data.table(

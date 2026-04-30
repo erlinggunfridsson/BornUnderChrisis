@@ -596,7 +596,7 @@ save_km_plot <- function(km_tidy, case, path) {
     )
   ) +
     ggplot2::geom_step(linewidth = 0.7) +
-    ggrepel::geom_text_repel(
+    ggplot2::ggrepel::geom_text_repel(
       data = label_dat,
       ggplot2::aes(label = cohort),
       direction = "y",
@@ -605,10 +605,9 @@ save_km_plot <- function(km_tidy, case, path) {
       segment.color = "grey50",
       segment.size = 0.3,
       box.padding = 0.2,
-      min.segment.length = 0,
       size = 3,
       show.legend = FALSE
-    ) +
+    )+
     ggplot2::facet_wrap(~ sex) +
     ggplot2::labs(
       title = paste("Kaplan–Meier by birth year and sex:", case),
@@ -622,13 +621,15 @@ save_km_plot <- function(km_tidy, case, path) {
     ) +
     ggplot2::scale_x_continuous(
       breaks = seq(0, max(km_tidy$time, na.rm = TRUE), by = 10),
-      expand = ggplot2::expansion(mult = c(0.01, 0.22))
+      expand = ggplot2::expansion(mult = c(0.01, 0.2))
     ) +
+    coord_cartesian(clip = "off") +
+    theme(plot.margin = ggplot2::margin(5.5, 60, 5.5, 5.5))+
     ggplot2::coord_cartesian(clip = "off") +
     ggplot2::theme(
-      legend.position = "none",
-      plot.margin = ggplot2::margin(5.5, 70, 5.5, 5.5)
-    )
+      plot.margin = ggplot2::margin(5.5, 35, 5.5, 5.5)
+    ) + 
+    ggplot2::theme(legend.position = "none")
   
   ggplot2::ggsave(
     filename = path,
@@ -733,7 +734,7 @@ save_km_plot_legitimacy <- function(km_tidy, case, path) {
     )
   ) +
     ggplot2::geom_step(linewidth = 0.7) +
-    ggrepel::geom_text_repel(
+    ggplot2::ggrepel::geom_text_repel(
       data = label_dat,
       ggplot2::aes(label = cohort),
       direction = "y",
@@ -742,10 +743,9 @@ save_km_plot_legitimacy <- function(km_tidy, case, path) {
       segment.color = "grey50",
       segment.size = 0.3,
       box.padding = 0.2,
-      min.segment.length = 0,
       size = 3,
       show.legend = FALSE
-    ) +
+    )+
     ggplot2::facet_wrap(~ legitimacy) +
     ggplot2::labs(
       title = paste("Kaplan–Meier by birth year and legitimacy:", case),
@@ -759,13 +759,15 @@ save_km_plot_legitimacy <- function(km_tidy, case, path) {
     ) +
     ggplot2::scale_x_continuous(
       breaks = seq(0, max(km_tidy$time, na.rm = TRUE), by = 10),
-      expand = ggplot2::expansion(mult = c(0.01, 0.22))
+      expand = ggplot2::expansion(mult = c(0.01, 0.2))
     ) +
+    coord_cartesian(clip = "off") +
+    theme(plot.margin = ggplot2::margin(5.5, 60, 5.5, 5.5))+
     ggplot2::coord_cartesian(clip = "off") +
     ggplot2::theme(
-      legend.position = "none",
-      plot.margin = ggplot2::margin(5.5, 70, 5.5, 5.5)
-    )
+      plot.margin = ggplot2::margin(5.5, 35, 5.5, 5.5)
+    ) +
+    ggplot2::theme(legend.position = "none")
   
   ggplot2::ggsave(
     filename = path,
@@ -777,7 +779,7 @@ save_km_plot_legitimacy <- function(km_tidy, case, path) {
   
   path
 }
-
+  
 make_illegitimacy_time_series <- function(dat, case, years_before = 10, years_after = 10) {
   DT <- data.table::copy(dat)
   
